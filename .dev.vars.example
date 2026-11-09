@@ -1,0 +1,5 @@
+# Copie para .dev.vars (que fica fora do git) e preencha só para testar localmente.
+# Em produção use: npx wrangler pages secret put <NOME>
+DEVIANTART_CLIENT_ID=
+DEVIANTART_CLIENT_SECRET=
+GOOGLE_VISION_KEY=

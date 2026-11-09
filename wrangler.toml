@@ -1,0 +1,20 @@
+name = "birefs"
+pages_build_output_dir = "./dist"
+compatibility_date = "2025-09-01"
+
+[vars]
+# Google Vision: 1.000 unidades grátis por mês.
+WEB_MONTHLY_LIMIT = "1000"
+WEB_DAILY_PER_IP = "10"
+
+# Os ids "local" bastam para o `wrangler pages dev`. Antes do deploy, troque pelos ids de
+# `npx wrangler kv namespace create birefs` e `npx wrangler d1 create birefs` (ids não são segredo).
+[[kv_namespaces]]
+binding = "KV"
+id = "local"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "birefs"
+database_id = "local"
+migrations_dir = "migrations"

@@ -1,0 +1,51 @@
+// Paleta "lavanda": neutros com viés lilás no claro, fundo arroxeado no escuro, violeta só para ação e foco.
+// Os pares texto/fundo passam no AA (violeta sobre fundo ≈ 7:1 nos dois temas).
+
+$light: (
+  bg: #faf8ff,
+  surface: #ffffff,
+  surface-2: #eee8ff,
+  text: #1c1430,
+  text-muted: #5e5678,
+  border: #e2daf7,
+  primary: #6a2fe0,
+  primary-hover: #5622c4,
+  on-primary: #ffffff,
+  primary-soft: #ece4fb,
+  on-primary-soft: #4a2a99,
+  danger: #b42318,
+);
+
+$dark: (
+  bg: #0f0a1c,
+  surface: #1a1330,
+  surface-2: #251c40,
+  text: #f1ecfb,
+  text-muted: #ada3c7,
+  border: #33285a,
+  primary: #b18cff,
+  primary-hover: #c7adff,
+  on-primary: #1a0b3a,
+  primary-soft: #2a1f45,
+  on-primary-soft: #d9ccff,
+  danger: #ff8a80,
+);
+
+@mixin theme($colors) {
+  @each $name, $value in $colors {
+    --#{$name}: #{$value};
+  }
+}
+
+:root {
+  @include theme($light);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    @include theme($dark);
+  }
+}
