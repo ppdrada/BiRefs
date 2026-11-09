@@ -213,6 +213,8 @@ def main():
     ap.add_argument("--limit", type=int, default=500)
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
+    # O console do Windows (cp1252) quebra com títulos em outros alfabetos.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if args.selftest:
         return selftest()
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { rank, type IndexEntry, type Mode } from './lib/features'
+import Viewer from './Viewer'
 
 const MODES: { id: Mode; label: string }[] = [
   { id: 'face', label: 'Rosto' },
@@ -7,21 +8,15 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'hand', label: 'Mão' },
 ]
 
-const NOT_FOUND: Record<Mode, string> = {
-  face: 'Não encontrei um rosto nesta foto. Tente outra ou mude o filtro.',
-  body: 'Não encontrei um corpo com ombros e quadril visíveis. Tente outra ou mude o filtro.',
-  hand: 'Não encontrei uma mão nesta foto. Tente outra ou mude o filtro.',
-}
-
-type Result = ReturnType<typeof rank>[number]
+type Group = { mode: Mode; label: string; results: ReturnType<typeof rank> }
 
 export default function App() {
   const [index, setIndex] = useState<IndexEntry[] | null>(null)
   const [photo, setPhoto] = useState<string | null>(null)
-  const [mode, setMode] = useState<Mode>('face')
   const [status, setStatus] = useState('')
   const [angles, setAngles] = useState<number[] | null>(null)
-  const [results, setResults] = useState<Result[]>([])
+  const [groups, setGroups] = useState<Group[]>([])
+  const [open, setOpen] = useState<IndexEntry | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const runRef = useRef(0)
 
@@ -37,27 +32,29 @@ export default function App() {
     if (!index || !img?.complete || !img.naturalWidth) return
     const run = ++runRef.current // ignora respostas de buscas antigas
     setStatus('Analisando a foto no seu aparelho…')
-    setResults([])
+    setGroups([])
     setAngles(null)
     try {
       // O MediaPipe só carrega quando há foto, para a página abrir leve.
       const { detect } = await import('./lib/detect')
-      const query = await detect(mode, img)
+      // Procura rosto, corpo e mão de uma vez e mostra o que encontrar.
+      const queries = await Promise.all(MODES.map((m) => detect(m.id, img)))
       if (run !== runRef.current) return
-      if (!query) return setStatus(NOT_FOUND[mode])
-      const found = rank(index, mode, query)
-      setAngles(mode === 'face' ? query : null)
-      setResults(found)
-      setStatus(found.length ? '' : 'Ainda não há referências desse tipo no índice.')
+      const found = MODES.map((m, i) => ({ ...m, mode: m.id, results: queries[i] ? rank(index, m.id, queries[i], 12) : [] }))
+      setAngles(queries[0] ?? null)
+      setGroups(found.filter((g) => g.results.length))
+      if (!queries.some(Boolean)) setStatus('Não encontrei rosto, corpo nem mão nesta foto. Tente outra.')
+      else if (!found.some((g) => g.results.length)) setStatus('Ainda não há referências desse tipo no índice.')
+      else setStatus('')
     } catch {
       if (run === runRef.current) setStatus('Não deu para carregar a IA. Confira a conexão e tente de novo.')
     }
   }
 
-  // Busca de novo quando o filtro muda ou o índice chega; a foto nova dispara pelo onLoad.
+  // Busca de novo quando o índice chega; a foto nova dispara pelo onLoad.
   useEffect(() => {
     search()
-  }, [mode, index]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [index]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function pick(file: File | undefined) {
     if (!file?.type.startsWith('image/')) return setStatus('Escolha um arquivo de imagem.')
@@ -94,21 +91,6 @@ export default function App() {
             )}
           </label>
 
-          <div className="filters" role="radiogroup" aria-label="O que comparar">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                role="radio"
-                aria-checked={mode === m.id}
-                className={mode === m.id ? 'chip active' : 'chip'}
-                onClick={() => setMode(m.id)}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
           {angles && (
             <p className="angles">
               Virado {angles[0]}°, inclinado {angles[1]}°, girado {angles[2]}°
@@ -119,29 +101,36 @@ export default function App() {
           </p>
         </section>
 
-        <ul className="results">
-          {results.map(({ entry }) => (
-            <li key={entry.id} className="card">
-              <a href={entry.url} target="_blank" rel="noopener noreferrer">
-                <img src={entry.image} alt={entry.title} loading="lazy" referrerPolicy="no-referrer" />
-              </a>
-              <div className="credit">
-                <span className="title">{entry.title}</span>
-                <span>
-                  por {entry.creator} ·{' '}
-                  <a href={entry.licenseUrl} target="_blank" rel="noopener noreferrer license">
-                    {entry.license}
-                  </a>{' '}
-                  ·{' '}
-                  <a href={entry.url} target="_blank" rel="noopener noreferrer">
-                    ver original
-                  </a>
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {groups.map((g) => (
+          <section key={g.mode} className="group" aria-labelledby={`g-${g.mode}`}>
+            <h2 id={`g-${g.mode}`}>{g.label}</h2>
+            <ul className="results">
+              {g.results.map(({ entry }) => (
+                <li key={entry.id} className="card">
+                  <button type="button" className="open" onClick={() => setOpen(entry)} aria-label={`Estudar ${entry.title}`}>
+                    <img src={entry.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  </button>
+                  <div className="credit">
+                    <span className="title">{entry.title}</span>
+                    <span>
+                      por {entry.creator} ·{' '}
+                      <a href={entry.licenseUrl} target="_blank" rel="noopener noreferrer license">
+                        {entry.license}
+                      </a>{' '}
+                      ·{' '}
+                      <a href={entry.url} target="_blank" rel="noopener noreferrer">
+                        ver original
+                      </a>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </main>
+
+      {open && <Viewer entry={open} onClose={() => setOpen(null)} />}
 
       <footer className="foot">
         A busca roda no seu navegador e a foto não sai do aparelho. Imagens CC0 e CC BY via Openverse, sempre com
