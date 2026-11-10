@@ -14,6 +14,7 @@ export type IndexEntry = Features & {
   source: string
   url: string // página original, para o crédito
   image: string // imagem no servidor original
+  tags?: string[] // tags do Openverse, em inglês
 }
 
 const deg = (rad: number) => (rad * 180) / Math.PI
@@ -64,6 +65,23 @@ const angleDiff = (a: number, b: number) => ((((a - b) % 360) + 540) % 360) - 18
 export function distance(mode: Mode, a: number[], b: number[]): number {
   if (mode === 'face') return Math.hypot(...a.map((v, i) => angleDiff(v, b[i])))
   return Math.sqrt(a.reduce((sum, v, i) => sum + (v - b[i]) ** 2, 0) / a.length)
+}
+
+// Junta as listas de rosto, corpo e mão intercalando por posição (1º de cada, depois 2º...), sem repetir imagem.
+// As distâncias de cada tipo têm unidades diferentes, então não dá para ordenar tudo junto por distância.
+export function interleave(lists: IndexEntry[][]): IndexEntry[] {
+  const seen = new Set<string>()
+  const out: IndexEntry[] = []
+  for (let i = 0; i < Math.max(0, ...lists.map((l) => l.length)); i++) {
+    for (const list of lists) {
+      const e = list[i]
+      if (e && !seen.has(e.id)) {
+        seen.add(e.id)
+        out.push(e)
+      }
+    }
+  }
+  return out
 }
 
 export function rank(index: IndexEntry[], mode: Mode, query: number[], limit = 24) {

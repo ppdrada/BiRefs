@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import fixture from './fixtures/features.json'
-import { bodyVector, distance, faceAngles, handVector, rank, type IndexEntry, type Point } from '../src/lib/features'
+import { bodyVector, distance, faceAngles, handVector, interleave, rank, type IndexEntry, type Point } from '../src/lib/features'
 
 const points = (sparse: Record<string, number[]>, n: number): Point[] =>
   Array.from({ length: n }, (_, i) => {
@@ -33,5 +33,10 @@ describe('similaridade', () => {
     const e = (id: string, face?: number[]) => ({ id, face }) as IndexEntry
     const index = [e('longe', [60, 0, 0]), e('perto', [12, 0, 0]), e('sem-rosto'), e('igual', [10, 0, 0])]
     expect(rank(index, 'face', [10, 0, 0]).map((r) => r.entry.id)).toEqual(['igual', 'perto', 'longe'])
+  })
+  it('junta rosto, corpo e mão intercalando, sem repetir imagem', () => {
+    const e = (id: string) => ({ id }) as IndexEntry
+    const lists = [[e('r1'), e('r2'), e('r3')], [e('c1'), e('r1')], [], [e('m1')]]
+    expect(interleave(lists).map((x) => x.id)).toEqual(['r1', 'c1', 'm1', 'r2', 'r3'])
   })
 })

@@ -8,7 +8,12 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  // Quadriculado de caderno de desenho, com as linhas no tom da paleta.
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
   color: var(--text);
   font: 16px/1.5 var(--font);
 }
@@ -45,7 +50,7 @@ a {
 }
 
 .tagline {
-  margin: 4px 0 0;
+  margin: 12px 0 0;
   color: var(--text-muted);
 }
 
@@ -82,28 +87,87 @@ a {
     color: var(--primary);
     font-weight: 600;
   }
-  img {
-    max-height: 320px;
-    max-width: 100%;
-    border-radius: var(--radius-sm);
-  }
 }
 
-.chip {
-  padding: 6px 16px;
+.btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--primary-soft);
-  color: var(--on-primary-soft);
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
   font-size: 14px;
   cursor: pointer;
 
-  &.active {
+  &:hover {
+    border-color: var(--primary);
+  }
+  &.primary {
     background: var(--primary);
     border-color: var(--primary);
     color: var(--on-primary);
   }
+  input {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+  }
+}
+
+.keyword {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 480px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+
+  &:focus-within {
+    border-color: var(--primary);
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+  }
+}
+
+.viewer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+
+  .credit {
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    flex: 1;
+  }
+}
+
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .angles,
@@ -156,15 +220,6 @@ a {
   }
 }
 
-.group {
-  margin-bottom: 32px;
-
-  h2 {
-    margin: 0 0 12px;
-    font-size: 18px;
-  }
-}
-
 .open {
   display: block;
   width: 100%;
@@ -190,34 +245,112 @@ a {
     margin: 12px 0 0;
     padding: 0;
   }
+  .close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    background: var(--surface);
+  }
 }
 
-.viewer-tools {
+.tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
 
   .sep {
     width: 1px;
     height: 24px;
+    margin: 0 4px;
     background: var(--border);
-  }
-  .close {
-    margin-left: auto;
   }
 }
 
-.viewer-hint {
+.tool {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  color: var(--on-primary-soft);
+  cursor: pointer;
+
+  &.on {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+  }
+
+  // Nome da ferramenta ao passar o mouse ou focar pelo teclado.
+  &::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 2;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--text);
+    color: var(--bg);
+    font-size: 12px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: opacity 0.12s;
+  }
+  &:hover::after,
+  &:focus-visible::after {
+    opacity: 1;
+  }
+}
+
+.hint {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--text-muted);
+  text-align: center;
 }
 
-.viewer-stage {
+.adjust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+
+  input {
+    width: min(320px, 50vw);
+    accent-color: var(--primary);
+  }
+  output {
+    min-width: 56px;
+    color: var(--text-muted);
+  }
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.stage {
   display: grid;
   place-items: center;
-  margin-top: 12px;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background: var(--surface-2);
@@ -228,7 +361,7 @@ a {
   img {
     display: block;
     max-width: 100%;
-    max-height: 62vh;
+    max-height: 60vh;
     user-select: none;
   }
 }

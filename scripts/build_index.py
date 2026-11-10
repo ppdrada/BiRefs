@@ -204,6 +204,8 @@ def describe(item, detectors):
         "source": item.get("source") or "",
         "url": item["foreign_landing_url"],
         "image": image,
+        # Tags do Openverse (em inglês) para a palavra-chave; até 15, sem repetir.
+        "tags": list(dict.fromkeys(t["name"].lower() for t in item.get("tags") or [] if t.get("name")))[:15],
         **feats,
     }
 
