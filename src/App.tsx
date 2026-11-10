@@ -4,12 +4,20 @@ import { Icon } from './icons'
 import { NO_EDITS, renderEdited, sameEdits, type Edits } from './lib/edit'
 import { interleave, rank, type IndexEntry, type Mode } from './lib/features'
 import { refine } from './lib/keyword'
+import { embeddingBits, fromBase64, similar } from './lib/similar'
 import Credit from './Credit'
 import Viewer from './Viewer'
 
 const MODES: Mode[] = ['face', 'body', 'hand']
 const POOL_PER_MODE = 40 // parecidas por tipo; a palavra-chave reordena dentro delas
+const SIMILAR = 60 // parecidas no geral, que entram depois das parecidas pelo ângulo
 const SHOW = 36
+const KINDS = [
+  { id: 'all', label: 'Tudo' },
+  { id: 'photo', label: 'Fotos' },
+  { id: 'drawing', label: 'Desenhos' },
+] as const
+type Kind = (typeof KINDS)[number]['id']
 
 // O que está sendo usado na busca: a foto da pessoa ou uma referência do índice.
 type Query = { src: string; entry?: IndexEntry }
@@ -25,6 +33,7 @@ export default function App() {
   const [angles, setAngles] = useState<number[] | null>(null)
   const [pool, setPool] = useState<IndexEntry[]>([]) // parecidas pelo ângulo, da mais para a menos
   const [keyword, setKeyword] = useState('')
+  const [kind, setKind] = useState<Kind>('all')
   const [open, setOpen] = useState<IndexEntry | null>(null)
   const [edits, setEdits] = useState<Edits>(NO_EDITS)
   const [searched, setSearched] = useState<Edits | null>(null) // edição usada na última busca
@@ -58,10 +67,12 @@ export default function App() {
     setAngles(null)
     setSearched(withEdits)
     let queries: (number[] | undefined)[]
+    let emb: Uint8Array | undefined
     try {
       if (q.entry && sameEdits(forSearch(withEdits), NO_EDITS)) {
         // Referência sem edição: os números já estão no índice, não precisa rodar a IA.
         queries = MODES.map((m) => q.entry![m])
+        emb = q.entry.emb ? fromBase64(q.entry.emb) : undefined
       } else {
         let img: HTMLImageElement
         try {
@@ -74,7 +85,9 @@ export default function App() {
         const { detect } = await import('./lib/detect')
         const source = sameEdits(forSearch(withEdits), NO_EDITS) ? img : renderEdited(img, withEdits)
         // Procura rosto, corpo e mão de uma vez e mostra o que encontrar.
-        queries = await Promise.all(MODES.map((m) => detect(m, source)))
+        const [face, body, hand, general] = await Promise.all([...MODES, 'embed' as const].map((m) => detect(m, source)))
+        queries = [face, body, hand]
+        emb = general?.length ? embeddingBits(general) : undefined
       }
     } catch {
       if (run === runRef.current) setStatus('Não deu para carregar a IA. Confira a conexão e tente de novo.')
@@ -82,11 +95,13 @@ export default function App() {
     }
     if (run !== runRef.current) return
     const others = q.entry ? index.filter((e) => e.id !== q.entry!.id) : index
-    const found = interleave(MODES.map((m, i) => (queries[i] ? rank(others, m, queries[i]!, POOL_PER_MODE).map((r) => r.entry) : [])))
+    const byAngle = interleave(MODES.map((m, i) => (queries[i] ? rank(others, m, queries[i]!, POOL_PER_MODE).map((r) => r.entry) : [])))
+    // Depois das parecidas pelo ângulo vêm as parecidas no geral (servem para animais, objetos e desenhos).
+    const general = emb ? similar(others, emb, SIMILAR).filter((e) => !byAngle.includes(e)) : []
     setAngles(queries[0] ?? null)
-    setPool(found)
-    if (!queries.some(Boolean)) setStatus('Não encontrei rosto, corpo nem mão nesta imagem. Tente outra.')
-    else if (!found.length) setStatus('Ainda não há referências desse tipo no índice.')
+    setPool([...byAngle, ...general])
+    if (!byAngle.length && !general.length) setStatus('Ainda não há referências parecidas no índice.')
+    else if (!queries.some(Boolean)) setStatus('Não achei pessoa nesta imagem, então mostro as parecidas no geral.')
     else setStatus('')
   }
 
@@ -142,7 +157,7 @@ export default function App() {
   }
 
   const entry = query?.entry
-  const refined = useMemo(() => refine(pool, keyword), [pool, keyword])
+  const refined = useMemo(() => refine(kind === 'all' ? pool : pool.filter((e) => e.kind === kind), keyword), [pool, keyword, kind])
   const results = refined.list.slice(0, SHOW)
   const word = keyword.trim()
   return (
@@ -191,10 +206,17 @@ export default function App() {
                   type="search"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Palavra-chave (opcional): mulher, sorrindo, dança…"
+                  placeholder="Palavra-chave (opcional): mulher, dança…"
                   aria-label="Palavra-chave para refinar as referências"
                 />
               </label>
+              <div className="kinds" role="radiogroup" aria-label="Tipo de referência">
+                {KINDS.map((k) => (
+                  <button key={k.id} type="button" role="radio" aria-checked={kind === k.id} className={kind === k.id ? 'btn primary' : 'btn'} onClick={() => setKind(k.id)}>
+                    {k.label}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <label className="drop" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
@@ -215,8 +237,10 @@ export default function App() {
               (word && pool.length > 0
                 ? refined.matched
                   ? `${refined.matched} das parecidas combinam com “${word}” e aparecem primeiro.`
-                  : `Nenhuma das parecidas combina com “${word}”. Mostrando só pelo ângulo.`
-                : '')}
+                  : `Nenhuma das parecidas combina com “${word}”. Mostrando sem a palavra.`
+                : pool.length > 0 && !results.length
+                  ? 'Nenhuma referência desse tipo entre as parecidas. Tente "Tudo".'
+                  : '')}
           </p>
         </section>
 

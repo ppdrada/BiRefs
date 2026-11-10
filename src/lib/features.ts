@@ -15,6 +15,8 @@ export type IndexEntry = Features & {
   url: string // página original, para o crédito
   image: string // imagem no servidor original
   tags?: string[] // tags do Openverse, em inglês
+  kind?: 'photo' | 'drawing'
+  emb?: string // impressão de semelhança geral, em base64 (ver lib/similar.ts)
 }
 
 const deg = (rad: number) => (rad * 180) / Math.PI

@@ -7,14 +7,13 @@ compatibility_date = "2025-09-01"
 WEB_MONTHLY_LIMIT = "1000"
 WEB_DAILY_PER_IP = "10"
 
-# Os ids "local" bastam para o `wrangler pages dev`. Antes do deploy, troque pelos ids de
-# `npx wrangler kv namespace create birefs` e `npx wrangler d1 create birefs` (ids não são segredo).
+# Ids do KV e do D1 na conta Cloudflare (não são segredo; o `wrangler pages dev` usa cópias locais).
 [[kv_namespaces]]
 binding = "KV"
-id = "local"
+id = "795f3cd39150494798e47ea8a0b24231"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "birefs"
-database_id = "local"
+database_id = "230d1d28-ece0-45c2-b553-202e47962432"
 migrations_dir = "migrations"

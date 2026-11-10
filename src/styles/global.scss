@@ -182,7 +182,7 @@ a {
 
 .results {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(200px, 40vw), 1fr));
   gap: 16px;
   margin: 0;
   padding: 0;
@@ -303,13 +303,12 @@ a {
     font-size: 12px;
     white-space: nowrap;
     pointer-events: none;
-    opacity: 0;
     transform: translateX(-50%);
-    transition: opacity 0.12s;
+    display: none; // escondido de verdade: invisível ele ainda alargaria a página no celular
   }
   &:hover::after,
   &:focus-visible::after {
-    opacity: 1;
+    display: block;
   }
 }
 
@@ -398,4 +397,42 @@ a {
   margin-top: 40px;
   font-size: 13px;
   color: var(--text-muted);
+}
+
+// Celular: barra de ícones numa linha só, visualizador ocupando a tela.
+@media (max-width: 480px) {
+  .tools {
+    gap: 4px;
+
+    .sep {
+      display: none;
+    }
+  }
+  .tool {
+    width: 34px;
+    height: 34px;
+  }
+  .viewer {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    padding: 12px;
+    border: 0;
+    border-radius: 0;
+  }
+  .results {
+    gap: 10px;
+  }
+}
+
+.kinds {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+
+  .btn {
+    padding: 5px 14px;
+  }
 }
