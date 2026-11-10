@@ -1,6 +1,18 @@
-# BiRefs
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/logo-dark.svg">
+    <img src="docs/brand/logo-light.svg" alt="BiRefs" width="320">
+  </picture>
+</p>
 
-**Bring Image References**: você sobe uma foto e recebe referências de desenho com o mesmo ângulo de rosto, a mesma pose ou a mesma mão.
+<p align="center">
+  <b>Bring Image References</b><br>
+  Você sobe uma foto e recebe referências de desenho com o mesmo ângulo de rosto, a mesma pose ou a mesma mão.
+</p>
+
+<p align="center">
+  <img src="docs/brand/app-screen.svg" alt="Tela do BiRefs: a foto no editor com a barra de ferramentas, a busca por palavra-chave e as referências parecidas" width="820">
+</p>
 
 - **Grátis de verdade:** sem anúncios, sem assinatura e com custo zero para hospedar.
 - **Privado:** a IA (MediaPipe) roda no seu navegador e a foto não sai do aparelho na busca local.
