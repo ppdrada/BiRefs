@@ -3,7 +3,7 @@ import Editor from './Editor'
 import { Icon } from './icons'
 import { NO_EDITS, renderEdited, sameEdits, type Edits } from './lib/edit'
 import { interleave, rank, type IndexEntry, type Mode } from './lib/features'
-import { refine } from './lib/keyword'
+import { deviantTag, refine } from './lib/keyword'
 import { embeddingBits, fromBase64, similar } from './lib/similar'
 import Credit from './Credit'
 import Viewer from './Viewer'
@@ -18,6 +18,9 @@ const KINDS = [
   { id: 'drawing', label: 'Desenhos' },
 ] as const
 type Kind = (typeof KINDS)[number]['id']
+type Deviation = { title: string; author: string; thumb: string; url: string }
+// Resultado do DeviantArt para uma tag; só aparece enquanto a palavra-chave dá a mesma tag.
+type DeviantArt = { tag: string; items: Deviation[]; error?: string; loading?: boolean }
 
 // O que está sendo usado na busca: a foto da pessoa ou uma referência do índice.
 type Query = { src: string; entry?: IndexEntry }
@@ -38,6 +41,7 @@ export default function App() {
   const [edits, setEdits] = useState<Edits>(NO_EDITS)
   const [searched, setSearched] = useState<Edits | null>(null) // edição usada na última busca
   const [history, setHistory] = useState<Snapshot[]>([]) // buscas anteriores, para o botão Voltar
+  const [da, setDa] = useState<DeviantArt | null>(null)
   const imgRef = useRef<HTMLImageElement | null>(null) // imagem da busca carregada fora da tela
   const runRef = useRef(0)
 
@@ -149,7 +153,22 @@ export default function App() {
     setStatus('')
   }
 
-  const changePhoto = <input type="file" accept="image/*" onChange={(e) => pick(e.target.files?.[0])} />
+  // DeviantArt só busca por tag (sem IA), então usa a palavra-chave e só quando a pessoa pede.
+  async function searchDeviantArt(tag: string) {
+    setDa({ tag, items: [], loading: true })
+    let next: DeviantArt
+    try {
+      const r = await fetch(`/api/deviantart?tag=${encodeURIComponent(tag)}`)
+      const body = await r.json()
+      next = r.ok ? { tag, items: body.results } : { tag, items: [], error: body.error }
+    } catch {
+      next = { tag, items: [], error: 'O DeviantArt não respondeu agora. Tente de novo mais tarde.' }
+    }
+    if (!next.error && !next.items.length) next.error = `Nada no DeviantArt com a tag “${tag}”.`
+    setDa((cur) => (cur?.tag === tag ? next : cur))
+  }
+
+  const changePhoto =<input type="file" accept="image/*" onChange={(e) => pick(e.target.files?.[0])} />
 
   function onDrop(e: DragEvent) {
     e.preventDefault()
@@ -160,6 +179,8 @@ export default function App() {
   const refined = useMemo(() => refine(kind === 'all' ? pool : pool.filter((e) => e.kind === kind), keyword), [pool, keyword, kind])
   const results = refined.list.slice(0, SHOW)
   const word = keyword.trim()
+  const tag = deviantTag(keyword)
+  const daShown = da?.tag === tag ? da : null
   return (
     <div className="app">
       <header className="top">
@@ -216,6 +237,11 @@ export default function App() {
                     {k.label}
                   </button>
                 ))}
+                {tag && (
+                  <button type="button" className="btn" disabled={daShown?.loading} onClick={() => searchDeviantArt(tag)}>
+                    <Icon name="buscar" /> “{tag}” no DeviantArt
+                  </button>
+                )}
               </div>
             </div>
           ) : (
@@ -242,9 +268,14 @@ export default function App() {
                   ? 'Nenhuma referência desse tipo entre as parecidas. Tente "Tudo".'
                   : '')}
           </p>
+          {daShown && (daShown.loading || daShown.error) && (
+            <p className="status" role="status">
+              {daShown.loading ? 'Buscando no DeviantArt…' : daShown.error}
+            </p>
+          )}
         </section>
 
-        {results.length > 0 && (
+        {(results.length > 0 || !!daShown?.items.length) && (
           <section aria-label="Referências parecidas">
             <ul className="results">
               {results.map((r) => (
@@ -253,6 +284,23 @@ export default function App() {
                     <img src={r.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
                   </button>
                   <Credit entry={r} />
+                </li>
+              ))}
+              {/* Do DeviantArt não temos licença para editar: o card leva para a página da obra. */}
+              {daShown?.items.map((d) => (
+                <li key={d.url} className="card">
+                  <a className="open" href={d.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${d.title} no DeviantArt`}>
+                    <img src={d.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                  </a>
+                  <div className="credit">
+                    <span className="title">{d.title}</span>
+                    <span>
+                      por {d.author} ·{' '}
+                      <a href={d.url} target="_blank" rel="noopener noreferrer">
+                        ver no DeviantArt
+                      </a>
+                    </span>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -264,7 +312,7 @@ export default function App() {
 
       <footer className="foot">
         Sua foto é analisada aqui no seu navegador e não é enviada a lugar nenhum. As referências são imagens livres
-        (CC0 e CC BY) do Openverse, sempre com o crédito de quem fez.
+        (CC0 e CC BY) do Openverse, sempre com o crédito de quem fez. As do DeviantArt abrem na página do artista.
       </footer>
     </div>
   )
