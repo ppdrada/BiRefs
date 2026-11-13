@@ -40,7 +40,7 @@ npm run pages:dev    # site + API, como no Cloudflare, em http://127.0.0.1:8788
 npm test
 ```
 
-Para refazer o índice (cerca de 500 imagens, alguns minutos):
+Para refazer o índice (cerca de 5.500 imagens, algumas horas; se parar, ele retoma de onde estava):
 
 ```bash
 npm run index
@@ -71,7 +71,7 @@ Antes do primeiro deploy, crie o KV e o D1 (`npx wrangler kv namespace create bi
 
 ## Fases
 
-0. Protótipo: índice de exemplo e busca por ângulo no navegador. **(atual)**
-1. MVP.
+0. Protótipo: índice de exemplo e busca por ângulo no navegador.
+1. MVP: índice com 5.546 fotos e desenhos, semelhança geral, celular e PWA. **(atual)**
 2. DeviantArt por tag e o botão "mais na web" do Google, com aviso e consentimento.
 3. Favoritos no localStorage, timer de sessão de desenho e crânio 3D opcional.
