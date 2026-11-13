@@ -242,6 +242,12 @@ export default function App() {
                     <Icon name="buscar" /> “{tag}” no DeviantArt
                   </button>
                 )}
+                {/* O Pinterest não tem API de busca: o botão só abre a busca deles em outra aba. */}
+                {word && (
+                  <a className="btn" href={`https://www.pinterest.com/search/pins/?q=${encodeURIComponent(word)}`} target="_blank" rel="noopener noreferrer">
+                    <Icon name="buscar" /> “{word}” no Pinterest
+                  </a>
+                )}
               </div>
             </div>
           ) : (
@@ -312,7 +318,8 @@ export default function App() {
 
       <footer className="foot">
         Sua foto é analisada aqui no seu navegador e não é enviada a lugar nenhum. As referências são imagens livres
-        (CC0 e CC BY) do Openverse, sempre com o crédito de quem fez. As do DeviantArt abrem na página do artista.
+        (CC0 e CC BY) do Openverse, sempre com o crédito de quem fez. As do DeviantArt abrem na página do artista.{' '}
+        <a href="/privacidade">Política de privacidade</a>
       </footer>
     </div>
   )

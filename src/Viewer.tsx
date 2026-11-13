@@ -30,6 +30,10 @@ export default function Viewer({ entry, onClose, onSearch }: Props) {
       />
       <div className="viewer-foot">
         <Credit entry={entry} />
+        {/* A referência já tem link público; a foto da pessoa nunca é enviada. */}
+        <a className="btn" href={`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(entry.image)}`} target="_blank" rel="noopener noreferrer">
+          <Icon name="buscar" /> Parecidas no Google
+        </a>
         <button type="button" className="btn primary" onClick={() => onSearch(edits)}>
           <Icon name="buscar" /> Buscar com esta imagem
         </button>

@@ -150,7 +150,36 @@ def embedding_bits(values):
     return base64.b64encode(np.packbits(np.asarray(values) > 0).tobytes()).decode()
 
 
+def fix_commons_kinds(entries):
+    """Na Wikimedia o tipo vem só do nome do arquivo, e pintura sem "painting" no nome virava foto.
+    Corrige pelo voto das 15 imagens mais parecidas das outras fontes, só quando 80% concordam."""
+    def bits(e):
+        return np.unpackbits(np.frombuffer(base64.b64decode(e["emb"]), np.uint8)).astype(np.float32) * 2 - 1
+
+    trusted = [e for e in entries if e.get("_from") != "commons"]
+    commons = [e for e in entries if e.get("_from") == "commons"]
+    if len(trusted) < 15 or not commons:
+        return 0
+    t = np.array([bits(e) for e in trusted])
+    drawing = np.array([e["kind"] == "drawing" for e in trusted])
+    top = np.argsort(-(np.array([bits(e) for e in commons]) @ t.T), axis=1)[:, :15]
+    changed = 0
+    for e, vote in zip(commons, drawing[top].mean(1)):
+        kind = "drawing" if vote >= 0.8 else "photo" if vote <= 0.2 else e["kind"]
+        changed += kind != e["kind"]
+        e["kind"] = kind
+    return changed
+
+
 def selftest():
+    def fake(kind, source, on):
+        emb = base64.b64encode(np.packbits(np.arange(64) < 32 if on else np.arange(64) >= 32).tobytes()).decode()
+        return {"kind": kind, "_from": source, "emb": emb}
+
+    sample = [fake("drawing", "met", True)] * 15 + [fake("photo", "openimages", False)] * 15
+    wrong = [fake("photo", "commons", True), fake("drawing", "commons", False)]
+    assert fix_commons_kinds(sample + wrong) == 2 and [e["kind"] for e in wrong] == ["drawing", "photo"]
+
     class P:
         def __init__(self, x=0, y=0, z=0, visibility=1):
             self.x, self.y, self.z, self.visibility = x, y, z, visibility
@@ -682,6 +711,7 @@ def main():
             seen_file.flush()
 
     entries = [e for e in entries if not MEDICAL_WORDS.search(e["title"])]
+    print(f"tipo corrigido em {fix_commons_kinds(entries)} imagens da Wikimedia")
     public = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     OUT.parent.mkdir(parents=True, exist_ok=True)
     # Uma entrada por linha, para o diff no git ficar legível.
