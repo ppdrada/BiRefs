@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { IndexEntry } from '../src/lib/features'
-import { refine } from '../src/lib/keyword'
+import { deviantTag, refine } from '../src/lib/keyword'
 
 const e = (id: string, title: string, tags: string[] = []) => ({ id, title, tags }) as IndexEntry
 const list = [e('a', 'Street scene'), e('b', 'Old man smiling', ['portrait']), e('c', 'Ballet dancer'), e('d', 'Woman', ['smile'])]
@@ -23,5 +23,10 @@ describe('palavra-chave', () => {
     const r = refine(list, 'cavalo')
     expect(ids(r)).toEqual(['a', 'b', 'c', 'd'])
     expect(r.matched).toBe(0)
+  })
+  it('tag do DeviantArt: primeira palavra, em inglês quando conhecida', () => {
+    expect(deviantTag('Mãos sentado')).toBe('hands')
+    expect(deviantTag('dragon')).toBe('dragon')
+    expect(deviantTag(' ! ')).toBe('')
   })
 })

@@ -62,6 +62,12 @@ export function keywordTerms(keyword: string): string[][] {
     .map((w) => [w, ...(PT_EN[w] ?? [])])
 }
 
+// Tag do DeviantArt: a primeira palavra, traduzida para o inglês quando está na lista.
+export function deviantTag(keyword: string): string {
+  const [first] = keywordTerms(keyword)
+  return first ? (first[1] ?? first[0]) : ''
+}
+
 const matches = (e: IndexEntry, terms: string[][]) => {
   const words = new Set(plain([e.title, ...(e.tags ?? [])].join(' ')).split(/[^a-z0-9]+/))
   // Todas as palavras digitadas precisam aparecer (em alguma das traduções) como palavra inteira.

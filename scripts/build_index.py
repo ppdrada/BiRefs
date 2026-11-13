@@ -1,11 +1,12 @@
 """Monta public/index/index.json com imagens livres (CC0, CC BY e domínio público).
 
-Fontes: Open Images (Google, CC BY 2.0 com autor e link por imagem), Openverse (fotos e desenhos)
-e Wikimedia Commons. Cada imagem ganha a "impressão" de semelhança geral (Image Embedder) e,
+Fontes: Open Images (Google, CC BY 2.0 com autor e link por imagem), Openverse (fotos e desenhos),
+Wikimedia Commons e os acervos abertos do Met, National Gallery of Art, SMK, Wellcome Collection e
+Rijksmuseum. Cada imagem ganha a "impressão" de semelhança geral (Image Embedder) e,
 se tiver pessoa, os ângulos do rosto e os pontos do corpo e da mão.
 
 Uso:
-  npm run index                      # cerca de 8 mil imagens (algumas horas; pode parar e rodar de novo que continua)
+  npm run index                      # até 12 mil imagens (algumas horas; pode parar e rodar de novo que continua)
   npm run index -- --limit 200       # amostra pequena
   npm run index -- --fresh           # apaga o progresso salvo e começa do zero
   npm run index -- --selftest        # confere se as contas batem com src/lib/features.ts e src/lib/similar.ts
@@ -65,6 +66,19 @@ ART_QUERIES = [
 ]
 # Sem pessoa: entram pela semelhança geral.
 OTHER_QUERIES = ["cat", "dog", "horse", "bird", "skull", "still life", "drapery", "tree", "animal sketch"]
+# Acervos de museus (desenhos, gravuras, esculturas e fotos antigas). As de pessoa só entram com pessoa detectada.
+MUSEUM_PEOPLE = [
+    "hand study", "hands", "portrait", "head study", "figure study", "nude", "dancer", "seated figure",
+    "standing figure", "muybridge",
+]
+MUSEUM_QUERIES = MUSEUM_PEOPLE + ["horse", "dog", "cat", "skull", "drapery"]
+CC0_URL = "https://creativecommons.org/publicdomain/zero/1.0/"
+# Escultura e foto vão para "Fotos"; o resto do acervo (desenho, gravura, pintura) para "Desenhos".
+PHOTO_WORDS = re.compile(r"photograph|sculpture|statue|fotografi|skulptur", re.I)
+# Acervos médicos (Wellcome) trazem doença, cirurgia e dissecação: ficam fora do índice.
+MEDICAL_WORDS = re.compile(
+    r"diseas|syphil|wound|surg|tumou?r|dissect|corpse|lepros|smallpox|ulcer|deform|amputat|cadaver|patholog|"
+    r"operation|lesion|scabies|acromegaly|spinal curvature|patient", re.I)
 
 OI = "https://storage.googleapis.com/openimages"
 OI_FILES = {
@@ -159,10 +173,10 @@ def selftest():
 
 # ---------- fontes ----------
 
-def get(url, **kw):
+def get(url, headers=HEADERS, **kw):
     for _ in range(4):
         try:
-            r = requests.get(url, headers=HEADERS, timeout=30, **kw)
+            r = requests.get(url, headers=headers, timeout=30, **kw)
         except requests.RequestException:
             time.sleep(10)
             continue
@@ -270,11 +284,14 @@ def commons(q):
 
 
 def oi_file(key):
-    path = CACHE / "openimages" / OI_FILES[key].replace("/", "_")
+    return cached_file(f"{OI}/{OI_FILES[key]}", CACHE / "openimages" / OI_FILES[key].replace("/", "_"))
+
+
+def cached_file(url, path):
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"baixando Open Images {OI_FILES[key]}...")
-        with requests.get(f"{OI}/{OI_FILES[key]}", headers=HEADERS, stream=True, timeout=60) as r:
+        print(f"baixando {url}...")
+        with requests.get(url, headers=HEADERS, stream=True, timeout=60) as r:
             r.raise_for_status()
             tmp = path.with_suffix(".part")
             with tmp.open("wb") as f:
@@ -336,14 +353,225 @@ def openimages(label):
         }
 
 
+def met(q):
+    """Metropolitan Museum: só obras em domínio público (CC0). O /v1/search foi aposentado em 2026."""
+    r = get("https://collectionapi.metmuseum.org/public/collection/v1.1/search", params={"q": q, "hasImages": "true"})
+    if not r or r.status_code != 200:
+        print(f"  Met {r.status_code if r else 'sem resposta'} em '{q}', pulando", file=sys.stderr)
+        return
+    for object_id in r.json().get("objectIDs") or []:
+        time.sleep(1)  # o Met bloqueia por um tempo quem faz muitos pedidos seguidos
+        o = get(f"https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}")
+        if not o or o.status_code != 200:
+            continue
+        o = o.json()
+        if not o.get("isPublicDomain") or not o.get("primaryImageSmall"):
+            continue
+        yield {
+            "id": f"met:{object_id}",
+            "title": (o.get("title") or "Sem título")[:120],
+            "creator": o.get("artistDisplayName") or "Autor desconhecido",
+            "license": "CC0",
+            "licenseUrl": CC0_URL,
+            "source": "met",
+            "url": o["objectURL"],
+            "image": o["primaryImageSmall"],
+            "original": o.get("primaryImage") or o["primaryImageSmall"],
+            "kind": "photo" if PHOTO_WORDS.search(o.get("classification") or "") else "drawing",
+            "tags": [t["term"].lower() for t in o.get("tags") or [] if t.get("term")][:15],
+        }
+
+
+_nga = None
+
+
+def nga_data():
+    """National Gallery of Art: o acervo aberto (CC0) vem em CSV no GitHub; a busca é feita aqui."""
+    global _nga
+    if _nga:
+        return _nga
+    base = "https://raw.githubusercontent.com/NationalGalleryOfArt/opendata/main/data"
+    csv.field_size_limit(10**8)
+    images = {}
+    with cached_file(f"{base}/published_images.csv", CACHE / "nga" / "published_images.csv").open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["openaccess"] == "1" and row["viewtype"] == "primary":
+                images[row["depictstmsobjectid"]] = row
+    objects = []
+    with cached_file(f"{base}/objects.csv", CACHE / "nga" / "objects.csv").open(encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row["objectid"] in images:
+                img = images[row["objectid"]]
+                # A descrição da imagem (assistivetext) ajuda a achar "mão", "dançarina" etc. além do título.
+                objects.append((f"{row['title']} {img['assistivetext']}".lower(), row, img))
+    print(f"National Gallery: {len(objects)} obras abertas com imagem")
+    _nga = objects
+    return _nga
+
+
+def nga(q):
+    words = q.lower().split()
+    for text, row, img in nga_data():
+        if not all(re.search(rf"\b{re.escape(w)}", text) for w in words):
+            continue
+        yield {
+            "id": f"nga:{row['objectid']}",
+            "title": (row["title"] or "Sem título")[:120],
+            "creator": row["attribution"] or "Autor desconhecido",
+            "license": "CC0",
+            "licenseUrl": CC0_URL,
+            "source": "nga",
+            "url": f"https://www.nga.gov/collection/art-object-page.{row['objectid']}.html",
+            "image": f"{img['iiifurl']}/full/!600,600/0/default.jpg",
+            "original": img["iiifthumburl"],
+            "kind": "photo" if PHOTO_WORDS.search(row["classification"]) else "drawing",
+            "tags": [],
+        }
+
+
+def smk(q):
+    """Statens Museum for Kunst (Dinamarca): só domínio público com imagem."""
+    offset, found = 0, 1
+    while offset < found:
+        r = get("https://api.smk.dk/api/v1/art/search/", params={
+            "keys": q, "filters": "[public_domain:true],[has_image:true]", "offset": offset, "rows": 100,
+        })
+        if not r or r.status_code != 200:
+            print(f"  SMK {r.status_code if r else 'sem resposta'} em '{q}', pulando", file=sys.stderr)
+            return
+        data = r.json()
+        found = data.get("found", 0)
+        for o in data.get("items") or []:
+            thumb = o.get("image_thumbnail")
+            if not thumb or not o.get("public_domain"):
+                continue
+            kinds = " ".join(n.get("name", "") for n in o.get("object_names") or [])
+            yield {
+                "id": f"smk:{o['object_number']}",
+                "title": ((o.get("titles") or [{}])[0].get("title") or "Sem título")[:120],
+                "creator": ((o.get("production") or [{}])[0].get("creator")) or "Autor desconhecido",
+                "license": "Domínio público",
+                "licenseUrl": o.get("rights") or "https://creativecommons.org/publicdomain/mark/1.0/",
+                "source": "smk",
+                "url": o["frontend_url"],
+                "image": thumb.replace("/full/!1024,/", "/full/!600,/"),
+                "original": thumb,
+                "kind": "photo" if PHOTO_WORDS.search(kinds) else "drawing",
+                "tags": [],
+            }
+        offset += 100
+        time.sleep(1)
+
+
+WELLCOME_LICENSES = {"cc-0": "CC0", "cc-by": "CC BY 4.0", "pdm": "Domínio público"}
+
+
+def wellcome(q):
+    """Wellcome Collection: o filtro de licença deixa de fora as CC BY-NC do acervo."""
+    url = "https://api.wellcomecollection.org/catalogue/v2/images"
+    params = {"query": q, "locations.license": ",".join(WELLCOME_LICENSES), "pageSize": 100, "include": "source.contributors"}
+    while url:
+        r = get(url, params=params)
+        if not r or r.status_code != 200:
+            print(f"  Wellcome {r.status_code if r else 'sem resposta'} em '{q}', pulando", file=sys.stderr)
+            return
+        data = r.json()
+        for o in data.get("results") or []:
+            loc = (o.get("locations") or [{}])[0]
+            lic = (loc.get("license") or {}).get("id")
+            if lic not in WELLCOME_LICENSES or not loc.get("url", "").endswith("/info.json"):
+                continue
+            src = o.get("source") or {}
+            people = [c.get("agent", {}).get("label") for c in src.get("contributors") or []]
+            title = src.get("title") or "Sem título"
+            yield {
+                "id": f"wellcome:{o['id']}",
+                "title": title[:120],
+                "creator": next((p for p in people if p), "Wellcome Collection"),
+                "license": WELLCOME_LICENSES[lic],
+                "licenseUrl": loc["license"].get("url") or "",
+                "source": "wellcome",
+                "url": f"https://wellcomecollection.org/works/{src.get('id')}",
+                "image": loc["url"].replace("/info.json", "/full/500,/0/default.jpg"),
+                "original": loc["url"].replace("/info.json", "/full/full/0/default.jpg"),
+                "kind": "photo" if PHOTO_WORDS.search(title) else "drawing",
+                "tags": [],
+            }
+        url, params = data.get("nextPage"), None
+        time.sleep(1)
+
+
+def rijks_license(obj):
+    """Licença da imagem no Linked Art do Rijksmuseum: aceita domínio público e CC BY, nunca BY-SA."""
+    for s in obj.get("subject_of") or []:
+        for d in s.get("digitally_carried_by") or []:
+            image = next((a["id"] for a in d.get("access_point") or [] if "/full/" in a.get("id", "")), None)
+            for ref in d.get("referred_to_by") or []:
+                lic = ref.get("content") or ""
+                if image and ("/publicdomain/" in lic or ("/licenses/by/" in lic)):
+                    return image, lic, ref.get("_label") or ("Domínio público" if "/publicdomain/" in lic else "CC BY")
+    return None
+
+
+def rijks(q):
+    """Rijksmuseum: a busca devolve só os ids dos desenhos; cada obra é lida à parte."""
+    url = "https://data.rijksmuseum.nl/search/collection"
+    params = {"description": q, "type": "drawing", "imageAvailable": "true"}
+    while url:
+        r = get(url, params=params)
+        if not r or r.status_code != 200:
+            print(f"  Rijksmuseum {r.status_code if r else 'sem resposta'} em '{q}', pulando", file=sys.stderr)
+            return
+        data = r.json()
+        for item in data.get("orderedItems") or []:
+            o = requests_ld(item["id"])
+            if not o or not (lic := rijks_license(o)):
+                continue
+            image, lic_url, lic_label = lic
+            names = [n for n in o.get("identified_by") or [] if n.get("type") == "Name"]
+            number = next((n["content"] for n in o.get("identified_by") or []
+                           if n.get("type") == "Identifier" and any("300312355" in c.get("id", "") for c in n.get("classified_as") or [])), None)
+            people = [p for part in (o.get("produced_by") or {}).get("part") or [] for p in part.get("carried_out_by") or []]
+            creator = next((n["@value"] for p in people for n in p.get("notation") or [] if n.get("@language") == "en"), None)
+            if not number:
+                continue
+            yield {
+                "id": f"rijks:{number}",
+                "title": ((names[0]["content"] if names else None) or "Sem título")[:120],
+                "creator": creator or "Autor desconhecido",
+                "license": "Domínio público" if "/publicdomain/" in lic_url else lic_label,
+                "licenseUrl": lic_url,
+                "source": "rijksmuseum",
+                "url": f"https://www.rijksmuseum.nl/en/collection/{number}",
+                "image": image.replace("/full/max/", "/full/!600,600/"),
+                "original": image,
+                "kind": "drawing",
+                "tags": [],
+            }
+            time.sleep(0.3)
+        url, params = (data.get("next") or {}).get("id"), None
+
+
+def requests_ld(url):
+    r = get(url, headers={**HEADERS, "Accept": "application/ld+json"})
+    return r.json() if r and r.status_code == 200 else None
+
+
 FETCH = {
     "openverse": lambda q: openverse(q, "photograph"),
     "openverse-art": lambda q: openverse(q, "illustration,digitized_artwork"),
     "commons": commons,
     "openimages": openimages,
+    "met": met,
+    "nga": nga,
+    "smk": smk,
+    "wellcome": wellcome,
+    "rijks": rijks,
 }
+# Museus primeiro: as fontes antigas já foram esgotadas no índice atual e só voltam a ser consultadas depois.
 JOBS = (
-    [("openimages", label) for label in OI_LABELS]
+    [(museum, q) for museum in ("met", "nga", "smk", "wellcome", "rijks") for q in MUSEUM_QUERIES]
+    + [("openimages", label) for label in OI_LABELS]
     + [("openverse", q) for q in QUERIES + OTHER_QUERIES]
     + [("openverse-art", q) for q in ART_QUERIES]
     + [("commons", q) for q in QUERIES + ART_QUERIES + OTHER_QUERIES]
@@ -395,7 +623,7 @@ def describe(item, detectors):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=8000)
+    ap.add_argument("--limit", type=int, default=12000)
     ap.add_argument("--fresh", action="store_true", help="apaga o progresso salvo e começa do zero")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
@@ -442,7 +670,7 @@ def main():
                     continue
                 # Busca de pessoa por texto traz lixo ("looking up" → galáxia): ali só entra quem tem pessoa detectada.
                 # Desenhos, animais/objetos e as etiquetas verificadas do Open Images entram também só pela semelhança geral.
-                if term in QUERIES and source != "openimages" and not any(k in entry for k in ("face", "body", "hand")):
+                if (term in QUERIES or term in MUSEUM_PEOPLE) and source != "openimages" and not any(k in entry for k in ("face", "body", "hand")):
                     continue
                 entry.update({"_from": source, "_q": term})
                 entries.append(entry)
@@ -453,6 +681,7 @@ def main():
                 print(f"[{len(entries)}/{args.limit}] {source} {term}: {entry['kind']} {kinds}  {entry['title'][:50]}")
             seen_file.flush()
 
+    entries = [e for e in entries if not MEDICAL_WORDS.search(e["title"])]
     public = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     OUT.parent.mkdir(parents=True, exist_ok=True)
     # Uma entrada por linha, para o diff no git ficar legível.
