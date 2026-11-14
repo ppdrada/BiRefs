@@ -101,10 +101,12 @@ a {
   color: var(--text);
   font: inherit;
   font-size: 14px;
+  text-decoration: none; // alguns botões são links que abrem outro site
   cursor: pointer;
 
   &:hover {
     border-color: var(--primary);
+    color: var(--text);
   }
   &.primary {
     background: var(--primary);
@@ -429,6 +431,7 @@ a {
 
 .kinds {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
 

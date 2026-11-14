@@ -50,6 +50,8 @@ const PT_EN: Record<string, string[]> = {
   violao: ['guitar'],
   pintura: ['painting', 'painted'],
   foto: ['photo', 'photograph'],
+  caveira: ['skull'],
+  esqueleto: ['skeleton'],
   preto: ['black'],
   branco: ['white'],
 }
