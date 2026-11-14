@@ -2,7 +2,7 @@
 
 Fontes: Open Images (Google, CC BY 2.0 com autor e link por imagem), Openverse (fotos e desenhos),
 Wikimedia Commons e os acervos abertos do Met, National Gallery of Art, SMK, Wellcome Collection e
-Rijksmuseum. Cada imagem ganha a "impressão" de semelhança geral (Image Embedder) e,
+Rijksmuseum. Cada imagem ganha a "impressão" de semelhança geral (CLIP) e,
 se tiver pessoa, os ângulos do rosto e os pontos do corpo e da mão.
 
 Uso:
@@ -28,8 +28,10 @@ from collections import defaultdict
 import cv2
 import mediapipe as mp
 import numpy as np
+import onnxruntime as ort
 import requests
 from mediapipe.tasks.python import BaseOptions, vision
+from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / "public" / "index" / "index.json"
@@ -43,8 +45,13 @@ MODEL_URLS = {
     "face": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
     "body": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
     "hand": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-    "embed": "https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/latest/mobilenet_v3_small.tflite",
+    # CLIP ViT-B/32 (OpenAI, licença MIT): entende o assunto da imagem, não só cores e formas.
+    "embed": "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main/onnx/vision_model_q4f16.onnx",
 }
+# Muda junto com EMBED em src/lib/detect.ts: imagens indexadas com outra versão são refeitas.
+EMBED_VERSION = "clip-b32"
+CLIP_MEAN = np.array([0.48145466, 0.4578275, 0.40821073], np.float32)
+CLIP_STD = np.array([0.26862954, 0.26130258, 0.27577711], np.float32)
 HEADERS = {"User-Agent": "BiRefsIndexer/0.3 (+https://github.com/ppdrada/BiRefs)"}
 
 QUERIES = [
@@ -609,14 +616,55 @@ JOBS = (
 
 # ---------- principal ----------
 
-def model(name):
-    ext = ".tflite" if name == "embed" else ".task"
-    path = MODELS / f"{name}{ext}"
+def model_path(name):
+    path = MODELS / (f"{EMBED_VERSION}.onnx" if name == "embed" else f"{name}.task")
     if not path.exists():
         MODELS.mkdir(parents=True, exist_ok=True)
         print(f"baixando modelo {name}...")
         path.write_bytes(get(MODEL_URLS[name]).content)
-    return BaseOptions(model_asset_path=str(path))
+    return str(path)
+
+
+def model(name):
+    return BaseOptions(model_asset_path=model_path(name))
+
+
+def load_rgb(url):
+    r = get(url)
+    if not r or r.status_code != 200:
+        return None
+    bgr = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+    if bgr is None or min(bgr.shape[:2]) < 64:  # imagem quebrada ou ícone de "foto removida"
+        return None
+    return np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+
+
+def embed(session, rgb):
+    """Impressão de semelhança geral. O preparo da imagem espelha clipInput() em src/lib/detect.ts."""
+    h, w = rgb.shape[:2]
+    side = min(w, h)
+    left, top = (w - side) // 2, (h - side) // 2
+    img = Image.fromarray(rgb[top:top + side, left:left + side]).resize((224, 224), Image.BICUBIC)
+    x = (np.asarray(img, np.float32) / 255 - CLIP_MEAN) / CLIP_STD
+    return session.run(["image_embeds"], {"pixel_values": x.transpose(2, 0, 1)[None].astype(np.float32)})[0][0]
+
+
+def reembed(entries, embedder):
+    """Refaz a impressão das imagens indexadas com um modelo antigo. Salva de tempos em tempos para poder retomar."""
+    todo = [e for e in entries if e.get("_emb") != EMBED_VERSION]
+
+    def save():
+        tmp = DONE.with_suffix(".part")
+        tmp.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries), encoding="utf-8")
+        tmp.replace(DONE)
+
+    for n, e in enumerate(todo, 1):
+        rgb = load_rgb(e["image"])
+        if rgb is not None:
+            e.update({"emb": embedding_bits(embed(embedder, rgb)), "_emb": EMBED_VERSION})
+        if n % 200 == 0 or n == len(todo):
+            save()
+            print(f"impressões refeitas: {n}/{len(todo)}", flush=True)
 
 
 def describe(item, detectors):
@@ -624,20 +672,16 @@ def describe(item, detectors):
     face, pose, hand, embedder = detectors
     image = item.pop("image")
     original = item.pop("original")
-    r = get(image)
-    if (not r or r.status_code != 200) and image != original:
+    rgb = load_rgb(image)
+    if rgb is None and image != original:
         image = original
-        r = get(image)
-    if not r or r.status_code != 200:
+        rgb = load_rgb(image)
+    if rgb is None:
         return None
-    bgr = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
-    if bgr is None or min(bgr.shape[:2]) < 64:  # imagem quebrada ou ícone de "foto removida"
-        return None
-    rgb = np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
     h, w = rgb.shape[:2]
     img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-    feats = {"emb": embedding_bits(embedder.embed(img).embeddings[0].embedding)}
+    feats = {"emb": embedding_bits(embed(embedder, rgb)), "_emb": EMBED_VERSION}
     f = face.detect(img).face_landmarks
     if f:
         feats["face"] = face_angles(f[0], w, h)
@@ -678,8 +722,9 @@ def main():
         vision.FaceLandmarker.create_from_options(vision.FaceLandmarkerOptions(base_options=model("face"), num_faces=1)),
         vision.PoseLandmarker.create_from_options(vision.PoseLandmarkerOptions(base_options=model("body"), num_poses=1)),
         vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(base_options=model("hand"), num_hands=1)),
-        vision.ImageEmbedder.create_from_options(vision.ImageEmbedderOptions(base_options=model("embed"), l2_normalize=True)),
+        ort.InferenceSession(model_path("embed"), providers=["CPUExecutionProvider"]),
     )
+    reembed(entries, detectors[3])
 
     # Divide as vagas entre fontes e termos para o índice ter de tudo um pouco.
     per_job = math.ceil(args.limit / len(JOBS))
@@ -710,7 +755,8 @@ def main():
                 print(f"[{len(entries)}/{args.limit}] {source} {term}: {entry['kind']} {kinds}  {entry['title'][:50]}")
             seen_file.flush()
 
-    entries = [e for e in entries if not MEDICAL_WORDS.search(e["title"])]
+    # Fica de fora quem ainda está com a impressão de um modelo antigo (imagem que não baixou; rodar de novo tenta outra vez).
+    entries = [e for e in entries if e.get("_emb") == EMBED_VERSION and not MEDICAL_WORDS.search(e["title"])]
     print(f"tipo corrigido em {fix_commons_kinds(entries)} imagens da Wikimedia")
     public = [{k: v for k, v in e.items() if not k.startswith("_")} for e in entries]
     OUT.parent.mkdir(parents=True, exist_ok=True)

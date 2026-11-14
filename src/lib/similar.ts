@@ -1,5 +1,5 @@
-// Semelhança geral (qualquer imagem: pessoa, animal, objeto, desenho) com a "impressão" do Image Embedder.
-// Cada número da impressão vira 1 bit (positivo ou não), então 1.024 números cabem em 128 bytes no índice.
+// Semelhança geral (qualquer imagem: pessoa, animal, objeto, desenho) com a "impressão" do CLIP.
+// Cada número da impressão vira 1 bit (positivo ou não), então 512 números cabem em 64 bytes no índice.
 // Precisa bater com embedding_bits() em scripts/build_index.py.
 import type { IndexEntry } from './features'
 
