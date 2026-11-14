@@ -5,9 +5,9 @@ import { Icon } from './icons'
 import { NO_EDITS, type Edits } from './lib/edit'
 import type { IndexEntry } from './lib/features'
 
-type Props = { entry: IndexEntry; onClose: () => void; onSearch: (edits: Edits) => void }
+type Props = { entry: IndexEntry; favorite: boolean; onFavorite: () => void; onClose: () => void; onSearch: (edits: Edits) => void }
 
-export default function Viewer({ entry, onClose, onSearch }: Props) {
+export default function Viewer({ entry, favorite, onFavorite, onClose, onSearch }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [edits, setEdits] = useState(NO_EDITS)
 
@@ -30,6 +30,9 @@ export default function Viewer({ entry, onClose, onSearch }: Props) {
       />
       <div className="viewer-foot">
         <Credit entry={entry} />
+        <button type="button" className="btn" aria-pressed={favorite} onClick={onFavorite}>
+          <Icon name="favorito" /> {favorite ? 'Favoritada' : 'Favoritar'}
+        </button>
         {/* A referência já tem link público; a foto da pessoa nunca é enviada. */}
         <a className="btn" href={`https://lens.google.com/uploadbyurl?url=${encodeURIComponent(entry.image)}`} target="_blank" rel="noopener noreferrer">
           <Icon name="buscar" /> Parecidas no Google

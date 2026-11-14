@@ -64,6 +64,7 @@ const PATHS = {
     </>
   ),
   fechar: <path d="M6 6l12 12M18 6L6 18" />,
+  favorito: <path d="M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10z" />,
 }
 
 export type IconName = keyof typeof PATHS
