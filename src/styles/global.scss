@@ -113,6 +113,10 @@ a {
     border-color: var(--primary);
     color: var(--on-primary);
   }
+  // Botão ligado (favoritos): o ícone fica cheio.
+  &[aria-pressed='true'] svg {
+    fill: currentColor;
+  }
   input {
     position: absolute;
     opacity: 0;

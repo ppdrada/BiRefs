@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
 import Editor from './Editor'
 import { Icon } from './icons'
 import { NO_EDITS, renderEdited, sameEdits, type Edits } from './lib/edit'
+import { loadFavorites, saveFavorites, toggleFavorite } from './lib/favorites'
 import { interleave, rank, type IndexEntry, type Mode } from './lib/features'
 import { deviantTag, refine } from './lib/keyword'
 import { embeddingBits, fromBase64, similar } from './lib/similar'
@@ -42,6 +43,8 @@ export default function App() {
   const [searched, setSearched] = useState<Edits | null>(null) // edição usada na última busca
   const [history, setHistory] = useState<Snapshot[]>([]) // buscas anteriores, para o botão Voltar
   const [da, setDa] = useState<DeviantArt | null>(null)
+  const [favorites, setFavorites] = useState(loadFavorites) // ids, o mais novo primeiro
+  const [showFavs, setShowFavs] = useState(false)
   const imgRef = useRef<HTMLImageElement | null>(null) // imagem da busca carregada fora da tela
   const runRef = useRef(0)
 
@@ -124,6 +127,7 @@ export default function App() {
       return setStatus('Não deu para abrir essa imagem. Tente outra.')
     }
     setQuery(q)
+    setShowFavs(false)
     setHistory([])
     setEdits(NO_EDITS)
     search(NO_EDITS, q)
@@ -135,6 +139,7 @@ export default function App() {
     setQuery(q)
     setEdits(entryEdits)
     setOpen(null)
+    setShowFavs(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     search(entryEdits, q)
   }
@@ -168,6 +173,12 @@ export default function App() {
     setDa((cur) => (cur?.tag === tag ? next : cur))
   }
 
+  function toggleFav(id: string) {
+    const next = toggleFavorite(favorites, id)
+    setFavorites(next)
+    saveFavorites(next)
+  }
+
   const changePhoto =<input type="file" accept="image/*" onChange={(e) => pick(e.target.files?.[0])} />
 
   function onDrop(e: DragEvent) {
@@ -177,7 +188,12 @@ export default function App() {
 
   const entry = query?.entry
   const refined = useMemo(() => refine(kind === 'all' ? pool : pool.filter((e) => e.kind === kind), keyword), [pool, keyword, kind])
+  const favEntries = useMemo(() => {
+    const byId = new Map(index?.map((e) => [e.id, e]))
+    return favorites.flatMap((id) => byId.get(id) ?? [])
+  }, [index, favorites])
   const results = refined.list.slice(0, SHOW)
+  const shown = showFavs ? favEntries : results
   const word = keyword.trim()
   const tag = deviantTag(keyword)
   const daShown = da?.tag === tag ? da : null
@@ -279,12 +295,19 @@ export default function App() {
               {daShown.loading ? 'Buscando no DeviantArt…' : daShown.error}
             </p>
           )}
+          {/* Fica fora do bloco da foto para dar para ver os favoritos antes de subir uma imagem. */}
+          <div>
+            <button type="button" className={showFavs ? 'btn primary' : 'btn'} aria-pressed={showFavs} onClick={() => setShowFavs(!showFavs)}>
+              <Icon name="favorito" /> Favoritos ({favEntries.length})
+            </button>
+          </div>
+          {index && showFavs && !favEntries.length && <p className="status">Nenhum favorito ainda. Abra uma referência e toque em Favoritar.</p>}
         </section>
 
-        {(results.length > 0 || !!daShown?.items.length) && (
-          <section aria-label="Referências parecidas">
+        {(shown.length > 0 || (!showFavs && !!daShown?.items.length)) && (
+          <section aria-label={showFavs ? 'Favoritos' : 'Referências parecidas'}>
             <ul className="results">
-              {results.map((r) => (
+              {shown.map((r) => (
                 <li key={r.id} className="card">
                   <button type="button" className="open" onClick={() => setOpen(r)} aria-label={`Estudar ${r.title}`}>
                     <img src={r.image} alt="" loading="lazy" referrerPolicy="no-referrer" />
@@ -293,7 +316,7 @@ export default function App() {
                 </li>
               ))}
               {/* Do DeviantArt não temos licença para editar: o card leva para a página da obra. */}
-              {daShown?.items.map((d) => (
+              {!showFavs && daShown?.items.map((d) => (
                 <li key={d.url} className="card">
                   <a className="open" href={d.url} target="_blank" rel="noopener noreferrer" aria-label={`Ver ${d.title} no DeviantArt`}>
                     <img src={d.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />
@@ -314,7 +337,7 @@ export default function App() {
         )}
       </main>
 
-      {open && <Viewer entry={open} onClose={() => setOpen(null)} onSearch={(e) => searchWith(open, e)} />}
+      {open && <Viewer entry={open} favorite={favorites.includes(open.id)} onFavorite={() => toggleFav(open.id)} onClose={() => setOpen(null)} onSearch={(e) => searchWith(open, e)} />}
 
       <footer className="foot">
         Sua foto é analisada aqui no seu navegador e não é enviada a lugar nenhum. As referências são imagens livres

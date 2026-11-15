@@ -23,6 +23,7 @@ O BiRefs é um projeto pessoal, gratuito e sem fins lucrativos, feito para quem 
 - **Mais de 9 mil referências livres:** fotos e desenhos do Openverse, Wikimedia Commons e Open Images, e obras dos acervos abertos do Met, National Gallery of Art, SMK, Wellcome Collection e Rijksmuseum.
 - **Refino:** palavra-chave em português ou inglês e filtro de fotos ou desenhos.
 - **Editor para estudo:** rabisco, valores, brilho, contraste, espelhar, girar e recortar. Dá para buscar com a imagem editada e baixar o resultado.
+- **Favoritos:** guarda as referências que você gostou no próprio navegador, sem cadastro.
 - **Outras fontes:** obras do DeviantArt pela palavra-chave, e botões que abrem a busca do Pinterest e do Google Lens em outra aba.
 - **Celular e offline:** funciona no celular e pode ser instalado como app (PWA).
 
@@ -94,7 +95,7 @@ Antes do primeiro deploy, crie o KV e o D1 (`npx wrangler kv namespace create bi
 
 0. Protótipo: índice de exemplo e busca por ângulo no navegador. **(feito)**
 1. MVP: índice maior, semelhança geral, celular e PWA. **(feito)**
-2. DeviantArt por tag, acervos de museus e busca pelo assunto da imagem com CLIP. **(atual)**
-3. Favoritos no localStorage, timer de sessão de desenho e crânio 3D opcional.
+2. DeviantArt por tag, acervos de museus e busca pelo assunto da imagem com CLIP. **(feito)**
+3. Favoritos no localStorage **(feito)**, timer de sessão de desenho e crânio 3D opcional. **(atual)**
 
 Em avaliação: login com o Pinterest para usar os próprios pins como referência (acesso à API pedido) e o botão do Google Vision.
